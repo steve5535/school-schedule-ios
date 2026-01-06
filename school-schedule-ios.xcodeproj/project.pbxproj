@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		D6B65AC42F0974000088F1AB /* school-schedule.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "school-schedule.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D6B65AC42F0974000088F1AB /* school-schedule-ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "school-schedule-ios.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		D6B65AC62F0974000088F1AB /* school-schedule */ = {
+		D6B65AC62F0974000088F1AB /* school-schedule-ios */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "school-schedule";
+			path = "school-schedule-ios";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		D6B65ABB2F0974000088F1AB = {
 			isa = PBXGroup;
 			children = (
-				D6B65AC62F0974000088F1AB /* school-schedule */,
+				D6B65AC62F0974000088F1AB /* school-schedule-ios */,
 				D6B65AC52F0974000088F1AB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -40,7 +40,7 @@
 		D6B65AC52F0974000088F1AB /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D6B65AC42F0974000088F1AB /* school-schedule.app */,
+				D6B65AC42F0974000088F1AB /* school-schedule-ios.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		D6B65AC32F0974000088F1AB /* school-schedule */ = {
+		D6B65AC32F0974000088F1AB /* school-schedule-ios */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D6B65ACF2F0974000088F1AB /* Build configuration list for PBXNativeTarget "school-schedule" */;
+			buildConfigurationList = D6B65ACF2F0974000088F1AB /* Build configuration list for PBXNativeTarget "school-schedule-ios" */;
 			buildPhases = (
 				D6B65AC02F0974000088F1AB /* Sources */,
 				D6B65AC12F0974000088F1AB /* Frameworks */,
@@ -61,13 +61,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				D6B65AC62F0974000088F1AB /* school-schedule */,
+				D6B65AC62F0974000088F1AB /* school-schedule-ios */,
 			);
-			name = "school-schedule";
+			name = "school-schedule-ios";
 			packageProductDependencies = (
 			);
 			productName = "school-schedule";
-			productReference = D6B65AC42F0974000088F1AB /* school-schedule.app */;
+			productReference = D6B65AC42F0974000088F1AB /* school-schedule-ios.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = D6B65ABF2F0974000088F1AB /* Build configuration list for PBXProject "school-schedule" */;
+			buildConfigurationList = D6B65ABF2F0974000088F1AB /* Build configuration list for PBXProject "school-schedule-ios" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				D6B65AC32F0974000088F1AB /* school-schedule */,
+				D6B65AC32F0974000088F1AB /* school-schedule-ios */,
 			);
 		};
 /* End PBXProject section */
@@ -251,6 +251,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 645YLKDTG9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -282,6 +283,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 645YLKDTG9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -309,7 +311,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		D6B65ABF2F0974000088F1AB /* Build configuration list for PBXProject "school-schedule" */ = {
+		D6B65ABF2F0974000088F1AB /* Build configuration list for PBXProject "school-schedule-ios" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D6B65ACD2F0974000088F1AB /* Debug */,
@@ -318,7 +320,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D6B65ACF2F0974000088F1AB /* Build configuration list for PBXNativeTarget "school-schedule" */ = {
+		D6B65ACF2F0974000088F1AB /* Build configuration list for PBXNativeTarget "school-schedule-ios" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D6B65AD02F0974000088F1AB /* Debug */,
