@@ -11,7 +11,6 @@ struct MySchoolApp: App {
 }
 
 // MARK: - Data Models
-// 앱에서 사용하는 데이터 구조 정의
 
 struct TodoItem: Identifiable, Codable {
     var id = UUID()
@@ -22,6 +21,7 @@ struct TodoItem: Identifiable, Codable {
 struct ClassItem: Identifiable, Codable {
     var id = UUID()
     var name: String
+    var period: Int 
     var items: [TodoItem]
 }
 
@@ -32,7 +32,6 @@ struct TimeTableData: Codable {
     var thu: [ClassItem] = []
     var fri: [ClassItem] = []
     
-    // 요일 문자열을 통해 해당 배열에 접근할 수 있게 해주는 서브스크립트
     subscript(day: String) -> [ClassItem] {
         get {
             switch day {
@@ -64,7 +63,6 @@ struct ScheduleItem: Identifiable, Codable {
 }
 
 // MARK: - Data Manager
-// 앱의 데이터를 관리하고 파일 시스템(JSON)에 저장/로드하는 역할을 담당
 
 class SchoolDataManager: ObservableObject {
     @Published var timeTable = TimeTableData()
@@ -77,12 +75,10 @@ class SchoolDataManager: ObservableObject {
         loadData()
     }
     
-    // 앱 전용 문서 디렉토리 경로 가져오기
     private func getDocumentsDirectory() -> URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
     
-    // 현재 상태를 JSON 파일로 저장
     func saveData() {
         let encoder = JSONEncoder()
         do {
@@ -95,7 +91,6 @@ class SchoolDataManager: ObservableObject {
         }
     }
     
-    // 저장된 JSON 파일에서 데이터를 읽어와 변수에 할당
     func loadData() {
         let decoder = JSONDecoder()
         let timeTableURL = getDocumentsDirectory().appendingPathComponent(timeTableFileName)
@@ -112,7 +107,6 @@ class SchoolDataManager: ObservableObject {
 }
 
 // MARK: - Main Content View
-// 하단 탭바를 통해 시간표와 D-day 뷰를 전환
 
 struct ContentView: View {
     @StateObject var dataManager = SchoolDataManager()
@@ -137,96 +131,217 @@ struct ContentView: View {
 }
 
 // MARK: - TimeTable View
-// 요일별 수업 목록을 확인하고 수업을 추가/수정/삭제하는 화면
 
 struct TimeTableView: View {
     @EnvironmentObject var manager: SchoolDataManager
     @State private var selectedDay: String = "월"
-    @State private var newClassName: String = ""
+    @State private var isEditingMode = false
     
-    // 과목 이름 수정을 위한 상태 변수
+    @State private var newClassName: String = ""
+    @State private var newClassPeriod: Int = 1
+    
     @State private var isShowingEditAlert = false
     @State private var editingClassID: UUID? = nil
     @State private var editingClassName: String = ""
+    @State private var editingClassPeriod: String = "" 
     
     let days = ["월", "화", "수", "목", "금"]
     
     var body: some View {
         NavigationView {
             VStack {
-                // 요일 선택 피커
-                Picker("요일", selection: $selectedDay) {
-                    ForEach(days, id: \.self) { day in
-                        Text(day).tag(day)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding()
+                dayPicker
                 
-                // 새 수업 추가 입력란
-                HStack {
-                    TextField("새 수업 이름", text: $newClassName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Button(action: addClass) {
-                        Image(systemName: "plus.circle.fill").font(.title2)
-                    }
-                    .disabled(newClassName.isEmpty)
+                if !isEditingMode {
+                    editToggleButton
+                } else {
+                    addClassSection
                 }
-                .padding(.horizontal)
                 
-                // 수업 목록 표시
-                List {
-                    ForEach(manager.timeTable[selectedDay]) { classItem in
-                        HStack {
-                            Text(classItem.name)
-                                .onTapGesture {
-                                    // 텍스트 클릭 시 수정 알림창 표시
-                                    editingClassID = classItem.id
-                                    editingClassName = classItem.name
-                                    isShowingEditAlert = true
-                                }
-                            Spacer()
-                            // 준비물 상세 화면으로 이동하는 링크
-                            NavigationLink(destination: ClassDetailView(classItem: classItem, selectedDay: selectedDay)) {
-                                Text("준비물 \(classItem.items.count)")
-                                    .font(.caption).foregroundColor(.gray)
-                            }
-                        }
-                    }
-                    .onDelete(perform: deleteClass)
-                }
+                classList
             }
             .navigationTitle("시간표")
-            .alert("과목 수정", isPresented: $isShowingEditAlert) {
-                TextField("과목 이름", text: $editingClassName)
-                Button("취소", role: .cancel) { }
-                Button("저장") { updateClassName() }
+            .alert("수업 정보 수정", isPresented: $isShowingEditAlert) {
+                editAlertActions
             }
         }
     }
     
-    // 과목명 업데이트 로직
-    func updateClassName() {
-        if let id = editingClassID, let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == id }) {
+    private var dayPicker: some View {
+        Picker("요일", selection: $selectedDay) {
+            ForEach(days, id: \.self) { day in
+                Text(day).tag(day)
+            }
+        }
+        .pickerStyle(SegmentedPickerStyle())
+        .padding()
+    }
+    
+    private var editToggleButton: some View {
+        Button(action: { 
+            withAnimation { 
+                isEditingMode = true 
+                updateNextPeriod() // 수정 모드 진입 시 다음 교시 번호 맞춤
+            } 
+        }) {
+            HStack {
+                Image(systemName: "pencil.circle.fill")
+                Text("시간표 수정하기")
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.orange)
+            .foregroundColor(.white)
+            .cornerRadius(12)
+        }
+        .padding(.horizontal)
+    }
+    
+    private var addClassSection: some View {
+        VStack(spacing: 15) {
+            HStack {
+                Text("수업 추가").font(.headline)
+                Spacer()
+                Button("완료") {
+                    withAnimation {
+                        isEditingMode = false
+                        newClassName = ""
+                    }
+                }
+                .font(.headline)
+                .foregroundColor(.blue)
+            }
+            
+            HStack {
+                Stepper("\(newClassPeriod)교시", value: $newClassPeriod, in: 1...10)
+                    .frame(width: 130)
+                
+                TextField("수업 이름 입력", text: $newClassName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                
+                Button(action: addClass) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(newClassName.isEmpty ? .gray : .green)
+                }
+                .disabled(newClassName.isEmpty)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+    
+    private var classList: some View {
+        List {
+            ForEach(manager.timeTable[selectedDay].sorted(by: { $0.period < $1.period })) { classItem in
+                classRow(for: classItem)
+            }
+            // 수정 모드일 때만 삭제 가능
+            .onDelete(perform: isEditingMode ? { offsets in deleteClass(at: offsets) } : nil)
+        }
+        // 수정 모드일 때 리스트에 편집 UI(마이너스 버튼) 표시
+        .environment(\.editMode, isEditingMode ? .constant(.active) : .constant(.inactive))
+    }
+    
+    private func classRow(for classItem: ClassItem) -> some View {
+        HStack {
+            Text("\(classItem.period)교시")
+                .font(.subheadline)
+                .foregroundColor(.blue)
+                .frame(width: 45, alignment: .leading)
+            
+            Text(classItem.name)
+                .onTapGesture {
+                    if isEditingMode {
+                        editingClassID = classItem.id
+                        editingClassName = classItem.name
+                        editingClassPeriod = String(classItem.period)
+                        isShowingEditAlert = true
+                    }
+                }
+            
+            Spacer()
+            
+            if !isEditingMode {
+                NavigationLink(destination: ClassDetailView(classItem: classItem, selectedDay: selectedDay)) {
+                    Text("준비물 \(classItem.items.count)")
+                        .font(.caption).foregroundColor(.gray)
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var editAlertActions: some View {
+        TextField("교시 (숫자)", text: $editingClassPeriod)
+            .keyboardType(.numberPad)
+        TextField("과목 이름", text: $editingClassName)
+        Button("취소", role: .cancel) { }
+        Button("저장") { updateClassInfo() }
+    }
+    
+    // MARK: - Logic
+    
+    func updateClassInfo() {
+        if let id = editingClassID, 
+           let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == id }),
+           let newPeriod = Int(editingClassPeriod) {
             manager.timeTable[selectedDay][index].name = editingClassName
+            manager.timeTable[selectedDay][index].period = newPeriod
+            manager.timeTable[selectedDay].sort(by: { $0.period < $1.period })
             manager.saveData()
+            updateNextPeriod()
         }
     }
     
     func addClass() {
-        manager.timeTable[selectedDay].append(ClassItem(name: newClassName, items: []))
+        let newItem = ClassItem(name: newClassName, period: newClassPeriod, items: [])
+        manager.timeTable[selectedDay].append(newItem)
+        manager.timeTable[selectedDay].sort(by: { $0.period < $1.period })
         manager.saveData()
+        
         newClassName = ""
+        updateNextPeriod()
     }
     
     func deleteClass(at offsets: IndexSet) {
-        manager.timeTable[selectedDay].remove(atOffsets: offsets)
+        // 현재 요일의 정렬된 리스트 복사본
+        var items = manager.timeTable[selectedDay].sorted(by: { $0.period < $1.period })
+        
+        // 삭제할 아이템들의 ID를 미리 추출 (인덱스 변화에 영향받지 않기 위함)
+        let idsToDelete = offsets.map { items[$0].id }
+        
+        for id in idsToDelete {
+            if let index = items.firstIndex(where: { $0.id == id }) {
+                let deletedPeriod = items[index].period
+                items.remove(at: index)
+                
+                // 삭제된 교시보다 뒷 순서의 수업들을 한 교시씩 앞으로 당김
+                for i in 0..<items.count {
+                    if items[i].period > deletedPeriod {
+                        items[i].period -= 1
+                    }
+                }
+            }
+        }
+        
+        // 변경 사항을 데이터 매니저에 반영
+        manager.timeTable[selectedDay] = items
         manager.saveData()
+        updateNextPeriod()
+    }
+    
+    // 다음 입력할 교시를 마지막 교시 + 1로 자동 업데이트
+    private func updateNextPeriod() {
+        let maxPeriod = manager.timeTable[selectedDay].map { $0.period }.max() ?? 0
+        newClassPeriod = min(maxPeriod + 1, 10)
     }
 }
 
 // MARK: - Class Detail View
-// 특정 수업의 준비물 체크리스트를 관리하는 화면
 
 struct ClassDetailView: View {
     @EnvironmentObject var manager: SchoolDataManager
@@ -245,18 +360,15 @@ struct ClassDetailView: View {
             .padding()
             
             List {
-                // 원본 데이터의 인덱스를 찾아 직접 접근하여 업데이트
                 if let classIndex = manager.timeTable[selectedDay].firstIndex(where: { $0.id == classItem.id }) {
                     ForEach(manager.timeTable[selectedDay][classIndex].items) { item in
                         HStack {
-                            // 완료 여부 토글 버튼
                             Button(action: { toggleItem(item, in: classIndex) }) {
                                 Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                                     .foregroundColor(item.isCompleted ? .green : .gray)
                             }
                             .buttonStyle(PlainButtonStyle())
                             
-                            // 완료 시 취소선 표시
                             Text(item.name)
                                 .strikethrough(item.isCompleted, color: .gray)
                                 .foregroundColor(item.isCompleted ? .gray : .primary)
@@ -291,7 +403,6 @@ struct ClassDetailView: View {
 }
 
 // MARK: - D-Day View
-// 중요한 시험이나 일정을 등록하고 남은 일수를 계산해주는 화면
 
 struct DDayView: View {
     @EnvironmentObject var manager: SchoolDataManager
@@ -301,21 +412,24 @@ struct DDayView: View {
     var body: some View {
         NavigationView {
             VStack {
-                // 상단 오늘 날짜 표시
                 Text(getTodayString()).font(.headline).padding(.top)
                 
-                // 일정 등록 섹션
                 VStack {
                     TextField("일정 이름", text: $newScheduleName).textFieldStyle(RoundedBorderTextFieldStyle())
                     DatePicker("날짜 선택", selection: $newScheduleDate, displayedComponents: .date)
                         .datePickerStyle(CompactDatePickerStyle())
                         .environment(\.locale, Locale(identifier: "ko_KR"))
+                    
                     Button("일정 추가") { addSchedule() }
-                        .frame(maxWidth: .infinity).padding().background(Color.blue).foregroundColor(.white).cornerRadius(8)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(newScheduleName.isEmpty ? Color.gray : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        .disabled(newScheduleName.isEmpty)
                 }
                 .padding()
                 
-                // 날짜순으로 정렬된 일정 목록
                 List {
                     ForEach(manager.schedules.sorted(by: { $0.date < $1.date })) { schedule in
                         HStack {
@@ -324,7 +438,6 @@ struct DDayView: View {
                                 Text(formatDate(schedule.date)).font(.caption).foregroundColor(.gray)
                             }
                             Spacer()
-                            // 계산된 D-Day 표시
                             Text(calculateDDay(targetDate: schedule.date)).fontWeight(.bold)
                         }
                     }
@@ -335,7 +448,6 @@ struct DDayView: View {
         }
     }
     
-    // 오늘의 날짜를 한국어 형식으로 반환
     func getTodayString() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ko_KR")
@@ -349,10 +461,8 @@ struct DDayView: View {
         return formatter.string(from: date)
     }
     
-    // 현재 날짜와 대상 날짜 사이의 차이를 계산
     func calculateDDay(targetDate: Date) -> String {
         let calendar = Calendar.current
-        // 시간 단위를 무시하고 날짜 차이만 계산하기 위해 startOfDay 사용
         let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: targetDate))
         if let day = components.day {
             if day > 0 { return "D-\(day)" }
@@ -363,13 +473,14 @@ struct DDayView: View {
     }
     
     func addSchedule() {
+        guard !newScheduleName.isEmpty else { return }
+        
         manager.schedules.append(ScheduleItem(name: newScheduleName, date: newScheduleDate))
         manager.saveData()
         newScheduleName = ""
     }
     
     func deleteSchedule(at offsets: IndexSet) {
-        // 정렬된 리스트에서의 인덱스를 실제 원본 배열의 인덱스로 매칭하여 삭제
         let sorted = manager.schedules.sorted(by: { $0.date < $1.date })
         offsets.forEach { index in
             let itemToDelete = sorted[index]
@@ -380,3 +491,8 @@ struct DDayView: View {
         manager.saveData()
     }
 }
+
+#Preview {
+    ContentView()
+}
+
