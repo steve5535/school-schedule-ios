@@ -4,7 +4,6 @@ import Combine
 // MARK: - App Entry Point
 @main
 struct MySchoolApp: App {
-    // 앱의 데이터 생명주기를 관리합니다.
     @StateObject private var dataManager = SchoolDataManager()
     
     var body: some Scene {
@@ -146,7 +145,6 @@ struct TimeTableView: View {
     
     let days = ["월", "화", "수", "목", "금"]
     
-    // 식별을 명확하게 하기 위해 정렬된 리스트를 별도 프로퍼티로 추출합니다.
     private var sortedClasses: [ClassItem] {
         manager.timeTable[selectedDay].sorted(by: { $0.period < $1.period })
     }
@@ -232,15 +230,26 @@ struct TimeTableView: View {
             ForEach(sortedClasses) { classItem in
                 classRow(for: classItem)
             }
-            // MODIFICATION START
-            .onDelete(perform: deleteClass) // Always provide the deleteClass function
-            // MODIFICATION END
+            .onDelete(perform: deleteClass)
         }
         .environment(\.editMode, isEditingMode ? .constant(.active) : .constant(.inactive))
     }
     
     private func classRow(for classItem: ClassItem) -> some View {
-        HStack {
+        let totalItems = classItem.items.count
+        let incompleteItems = classItem.items.filter { !$0.isCompleted }.count
+        let itemsCountText: String
+        
+        if totalItems == 0 {
+            itemsCountText = "없음"
+        } else if incompleteItems == 0 {
+            itemsCountText = "다 챙김"
+        }
+        else {
+            itemsCountText = "\(totalItems)/\(incompleteItems)"
+        }
+        
+        return HStack {
             Text("\(classItem.period)교시")
                 .font(.subheadline)
                 .foregroundColor(.blue)
@@ -260,7 +269,7 @@ struct TimeTableView: View {
             
             if !isEditingMode {
                 NavigationLink(destination: ClassDetailView(classItem: classItem, selectedDay: selectedDay)) {
-                    Text("준비물 \(classItem.items.count)")
+                    Text("준비물 \(itemsCountText)")
                         .font(.caption).foregroundColor(.gray)
                 }
             }
@@ -272,31 +281,38 @@ struct TimeTableView: View {
               let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == id }),
               let newPeriod = Int(editingClassPeriod) else { return }
         
-        manager.timeTable[selectedDay][index].name = editingClassName
-        manager.timeTable[selectedDay][index].period = newPeriod
+        var currentDayClasses = manager.timeTable[selectedDay]
+        currentDayClasses[index].name = editingClassName
+        currentDayClasses[index].period = newPeriod
+        manager.timeTable[selectedDay] = currentDayClasses
     }
     
     private func addClass() {
         let newItem = ClassItem(name: newClassName, period: newClassPeriod, items: [])
-        manager.timeTable[selectedDay].append(newItem)
+        var currentDayClasses = manager.timeTable[selectedDay]
+        currentDayClasses.append(newItem)
+        manager.timeTable[selectedDay] = currentDayClasses
+        
         newClassName = ""
         updateNextPeriod()
     }
     
     private func deleteClass(at offsets: IndexSet) {
-        var items = sortedClasses
+        let items = sortedClasses // Changed 'var' to 'let'
         let idsToDelete = offsets.map { items[$0].id }
         
+        var currentDayClasses = manager.timeTable[selectedDay]
+        
         for id in idsToDelete {
-            if let index = items.firstIndex(where: { $0.id == id }) {
-                let deletedPeriod = items[index].period
-                items.remove(at: index)
-                for i in 0..<items.count where items[i].period > deletedPeriod {
-                    items[i].period -= 1
+            if let indexInCurrent = currentDayClasses.firstIndex(where: { $0.id == id }) {
+                let deletedPeriod = currentDayClasses[indexInCurrent].period
+                currentDayClasses.remove(at: indexInCurrent)
+                for i in 0..<currentDayClasses.count where currentDayClasses[i].period > deletedPeriod {
+                    currentDayClasses[i].period -= 1
                 }
             }
         }
-        manager.timeTable[selectedDay] = items
+        manager.timeTable[selectedDay] = currentDayClasses
         updateNextPeriod()
     }
     
@@ -340,7 +356,9 @@ struct ClassDetailView: View {
                         }
                     }
                     .onDelete { offsets in
-                        manager.timeTable[selectedDay][classIndex].items.remove(atOffsets: offsets)
+                        var currentDayClasses = manager.timeTable[selectedDay]
+                        currentDayClasses[classIndex].items.remove(atOffsets: offsets)
+                        manager.timeTable[selectedDay] = currentDayClasses
                     }
                 }
             }
@@ -349,14 +367,18 @@ struct ClassDetailView: View {
     }
     
     private func toggleItem(_ item: TodoItem, in classIndex: Int) {
-        if let itemIndex = manager.timeTable[selectedDay][classIndex].items.firstIndex(where: { $0.id == item.id }) {
-            manager.timeTable[selectedDay][classIndex].items[itemIndex].isCompleted.toggle()
+        var currentDayClasses = manager.timeTable[selectedDay]
+        if let itemIndex = currentDayClasses[classIndex].items.firstIndex(where: { $0.id == item.id }) {
+            currentDayClasses[classIndex].items[itemIndex].isCompleted.toggle()
+            manager.timeTable[selectedDay] = currentDayClasses
         }
     }
     
     private func addItem() {
         if let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == classItem.id }) {
-            manager.timeTable[selectedDay][index].items.append(TodoItem(name: newItemName))
+            var currentDayClasses = manager.timeTable[selectedDay]
+            currentDayClasses[index].items.append(TodoItem(name: newItemName))
+            manager.timeTable[selectedDay] = currentDayClasses
             newItemName = ""
         }
     }
@@ -376,13 +398,14 @@ struct DDayView: View {
     var body: some View {
         NavigationView {
             VStack {
+                // MARK: - 날짜 및 요일 표시 원래대로 복원
                 Text(Date().formatted(date: .complete, time: .omitted))
                     .font(.headline).padding(.top)
                 
                 VStack {
                     TextField("일정 이름", text: $newScheduleName).textFieldStyle(RoundedBorderTextFieldStyle())
                     DatePicker("날짜 선택", selection: $newScheduleDate, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "ko_KR"))
+                        .environment(\.locale, Locale(identifier: "ko_KR")) // DatePicker는 한국어 유지
                     
                     Button("일정 추가", action: addSchedule)
                         .frame(maxWidth: .infinity)
@@ -399,6 +422,7 @@ struct DDayView: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(schedule.name)
+                                // MARK: - 일정 날짜 표시 원래대로 복원
                                 Text(schedule.date.formatted(date: .numeric, time: .omitted))
                                     .font(.caption).foregroundColor(.gray)
                             }
