@@ -1,7 +1,6 @@
 import SwiftUI
 import Combine
 
-// MARK: - App Entry Point
 @main
 struct MySchoolApp: App {
     @StateObject private var dataManager = SchoolDataManager()
@@ -13,8 +12,6 @@ struct MySchoolApp: App {
         }
     }
 }
-
-// MARK: - Data Models
 
 struct TodoItem: Identifiable, Codable {
     var id = UUID()
@@ -66,8 +63,6 @@ struct ScheduleItem: Identifiable, Codable {
     var date: Date
 }
 
-// MARK: - Data Manager
-
 class SchoolDataManager: ObservableObject {
     @Published var timeTable = TimeTableData() {
         didSet { saveData() }
@@ -110,8 +105,6 @@ class SchoolDataManager: ObservableObject {
     }
 }
 
-// MARK: - Main Content View
-
 struct ContentView: View {
     var body: some View {
         TabView {
@@ -127,8 +120,6 @@ struct ContentView: View {
         }
     }
 }
-
-// MARK: - TimeTable View
 
 struct TimeTableView: View {
     @EnvironmentObject var manager: SchoolDataManager
@@ -298,7 +289,7 @@ struct TimeTableView: View {
     }
     
     private func deleteClass(at offsets: IndexSet) {
-        let items = sortedClasses // Changed 'var' to 'let'
+        let items = sortedClasses
         let idsToDelete = offsets.map { items[$0].id }
         
         var currentDayClasses = manager.timeTable[selectedDay]
@@ -321,8 +312,6 @@ struct TimeTableView: View {
         newClassPeriod = min(maxPeriod + 1, 10)
     }
 }
-
-// MARK: - Class Detail View
 
 struct ClassDetailView: View {
     @EnvironmentObject var manager: SchoolDataManager
@@ -384,8 +373,6 @@ struct ClassDetailView: View {
     }
 }
 
-// MARK: - D-Day View
-
 struct DDayView: View {
     @EnvironmentObject var manager: SchoolDataManager
     @State private var newScheduleName: String = ""
@@ -395,17 +382,23 @@ struct DDayView: View {
         manager.schedules.sorted(by: { $0.date < $1.date })
     }
     
+    private var formattedCurrentDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd EEEE"
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.string(from: Date())
+    }
+    
     var body: some View {
         NavigationView {
             VStack {
-                // MARK: - 날짜 및 요일 표시 원래대로 복원
-                Text(Date().formatted(date: .complete, time: .omitted))
+                Text("현재날짜 : \(formattedCurrentDate)")
                     .font(.headline).padding(.top)
                 
                 VStack {
                     TextField("일정 이름", text: $newScheduleName).textFieldStyle(RoundedBorderTextFieldStyle())
                     DatePicker("날짜 선택", selection: $newScheduleDate, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "ko_KR")) // DatePicker는 한국어 유지
+                        .environment(\.locale, Locale(identifier: "ko_KR"))
                     
                     Button("일정 추가", action: addSchedule)
                         .frame(maxWidth: .infinity)
@@ -422,7 +415,6 @@ struct DDayView: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(schedule.name)
-                                // MARK: - 일정 날짜 표시 원래대로 복원
                                 Text(schedule.date.formatted(date: .numeric, time: .omitted))
                                     .font(.caption).foregroundColor(.gray)
                             }
