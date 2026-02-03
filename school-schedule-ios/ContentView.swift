@@ -123,7 +123,13 @@ struct ContentView: View {
 
 struct TimeTableView: View {
     @EnvironmentObject var manager: SchoolDataManager
-    @State private var selectedDay: String = "월"
+    @State private var selectedDay: String = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "E"
+        let currentDay = formatter.string(from: Date())
+        return ["월", "화", "수", "목", "금"].contains(currentDay) ? currentDay : "월"
+    }()
     @State private var isEditingMode = false
     
     @State private var newClassName: String = ""
