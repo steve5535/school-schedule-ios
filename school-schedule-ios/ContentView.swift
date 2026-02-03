@@ -1,14 +1,29 @@
 import SwiftUI
 import Combine
+import UserNotifications
 
 @main
 struct MySchoolApp: App {
     @StateObject private var dataManager = SchoolDataManager()
     
+    init() {
+        requestNotificationPermission()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(dataManager)
+        }
+    }
+    
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("알림 권한 허용됨")
+            } else {
+                print("알림 권한 거부됨")
+            }
         }
     }
 }
@@ -68,7 +83,10 @@ class SchoolDataManager: ObservableObject {
         didSet { saveData() }
     }
     @Published var schedules: [ScheduleItem] = [] {
-        didSet { saveData() }
+        didSet { 
+            saveData()
+            updateAllNotifications()
+        }
     }
     
     private let timeTableFileName = "timetable.json"
@@ -102,6 +120,33 @@ class SchoolDataManager: ObservableObject {
            let decoded = try? decoder.decode([ScheduleItem].self, from: data) {
             schedules = decoded
         }
+    }
+    
+    private func updateAllNotifications() {
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        
+        for schedule in schedules {
+            scheduleDMinusOneNotification(for: schedule)
+        }
+    }
+    
+    private func scheduleDMinusOneNotification(for schedule: ScheduleItem) {
+        let calendar = Calendar.current
+        // D-1일 계산 (일정 하루 전 오전 9시 알림)
+        guard let notifyDate = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: schedule.date)),
+              let finalNotifyDate = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: notifyDate),
+              finalNotifyDate > Date() else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "D-1 알림"
+        content.body = "'\(schedule.name)' 일정이 내일입니다!"
+        content.sound = .default
+        
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: finalNotifyDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        
+        let request = UNNotificationRequest(identifier: schedule.id.uuidString, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
     }
 }
 
@@ -383,6 +428,7 @@ struct DDayView: View {
     @EnvironmentObject var manager: SchoolDataManager
     @State private var newScheduleName: String = ""
     @State private var newScheduleDate: Date = Date()
+    @State private var isShowingDuplicateAlert = false
     
     private var sortedSchedules: [ScheduleItem] {
         manager.schedules.sorted(by: { $0.date < $1.date })
@@ -425,13 +471,20 @@ struct DDayView: View {
                                     .font(.caption).foregroundColor(.gray)
                             }
                             Spacer()
-                            Text(calculateDDay(targetDate: schedule.date)).fontWeight(.bold)
+                            Text(calculateDDay(targetDate: schedule.date))
+                                .fontWeight(.bold)
+                                .foregroundColor(isPast(schedule.date) ? .gray : .primary)
                         }
                     }
                     .onDelete(perform: deleteSchedule)
                 }
             }
             .navigationTitle("D-day 일정")
+            .alert("추가 불가능", isPresented: $isShowingDuplicateAlert) {
+                Button("확인", role: .cancel) { }
+            } message: {
+                Text("같은 날짜와 같은 이름으로는 추가가 불가능 합니다.")
+            }
         }
     }
     
@@ -442,12 +495,25 @@ struct DDayView: View {
         
         if day > 0 { return "D-\(day)" }
         if day == 0 { return "D-Day" }
-        return "종료"
+        return "D+\(abs(day))"
+    }
+    
+    private func isPast(_ date: Date) -> Bool {
+        Calendar.current.startOfDay(for: date) < Calendar.current.startOfDay(for: Date())
     }
     
     private func addSchedule() {
-        manager.schedules.append(ScheduleItem(name: newScheduleName, date: newScheduleDate))
-        newScheduleName = ""
+        let isDuplicate = manager.schedules.contains { schedule in
+            schedule.name == newScheduleName && 
+            Calendar.current.isDate(schedule.date, inSameDayAs: newScheduleDate)
+        }
+        
+        if isDuplicate {
+            isShowingDuplicateAlert = true
+        } else {
+            manager.schedules.append(ScheduleItem(name: newScheduleName, date: newScheduleDate))
+            newScheduleName = ""
+        }
     }
     
     private func deleteSchedule(at offsets: IndexSet) {
