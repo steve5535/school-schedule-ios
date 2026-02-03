@@ -1,11 +1,16 @@
 import SwiftUI
 import Combine
 
+// MARK: - App Entry Point
 @main
 struct MySchoolApp: App {
+    // 앱의 데이터 생명주기를 관리합니다.
+    @StateObject private var dataManager = SchoolDataManager()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(dataManager)
         }
     }
 }
@@ -21,8 +26,8 @@ struct TodoItem: Identifiable, Codable {
 struct ClassItem: Identifiable, Codable {
     var id = UUID()
     var name: String
-    var period: Int 
-    var items: [TodoItem]
+    var period: Int
+    var items: [TodoItem] = []
 }
 
 struct TimeTableData: Codable {
@@ -65,8 +70,12 @@ struct ScheduleItem: Identifiable, Codable {
 // MARK: - Data Manager
 
 class SchoolDataManager: ObservableObject {
-    @Published var timeTable = TimeTableData()
-    @Published var schedules: [ScheduleItem] = []
+    @Published var timeTable = TimeTableData() {
+        didSet { saveData() }
+    }
+    @Published var schedules: [ScheduleItem] = [] {
+        didSet { saveData() }
+    }
     
     private let timeTableFileName = "timetable.json"
     private let scheduleFileName = "schedule_dday.json"
@@ -75,31 +84,27 @@ class SchoolDataManager: ObservableObject {
         loadData()
     }
     
-    private func getDocumentsDirectory() -> URL {
+    private var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
     
-    func saveData() {
-        let encoder = JSONEncoder()
-        do {
-            let timeTableData = try encoder.encode(timeTable)
-            try timeTableData.write(to: getDocumentsDirectory().appendingPathComponent(timeTableFileName))
-            let scheduleData = try encoder.encode(schedules)
-            try scheduleData.write(to: getDocumentsDirectory().appendingPathComponent(scheduleFileName))
-        } catch {
-            print("데이터 저장 중 오류 발생")
-        }
+    private func fileURL(for fileName: String) -> URL {
+        documentsDirectory.appendingPathComponent(fileName)
     }
     
-    func loadData() {
+    private func saveData() {
+        let encoder = JSONEncoder()
+        try? encoder.encode(timeTable).write(to: fileURL(for: timeTableFileName))
+        try? encoder.encode(schedules).write(to: fileURL(for: scheduleFileName))
+    }
+    
+    private func loadData() {
         let decoder = JSONDecoder()
-        let timeTableURL = getDocumentsDirectory().appendingPathComponent(timeTableFileName)
-        if let data = try? Data(contentsOf: timeTableURL),
+        if let data = try? Data(contentsOf: fileURL(for: timeTableFileName)),
            let decoded = try? decoder.decode(TimeTableData.self, from: data) {
             timeTable = decoded
         }
-        let scheduleURL = getDocumentsDirectory().appendingPathComponent(scheduleFileName)
-        if let data = try? Data(contentsOf: scheduleURL),
+        if let data = try? Data(contentsOf: fileURL(for: scheduleFileName)),
            let decoded = try? decoder.decode([ScheduleItem].self, from: data) {
             schedules = decoded
         }
@@ -109,23 +114,17 @@ class SchoolDataManager: ObservableObject {
 // MARK: - Main Content View
 
 struct ContentView: View {
-    @StateObject var dataManager = SchoolDataManager()
-    
     var body: some View {
         TabView {
             TimeTableView()
                 .tabItem {
-                    Image(systemName: "calendar")
-                    Text("시간표")
+                    Label("시간표", systemImage: "calendar")
                 }
-                .environmentObject(dataManager)
             
             DDayView()
                 .tabItem {
-                    Image(systemName: "clock")
-                    Text("D-day")
+                    Label("D-day", systemImage: "clock")
                 }
-                .environmentObject(dataManager)
         }
     }
 }
@@ -141,59 +140,60 @@ struct TimeTableView: View {
     @State private var newClassPeriod: Int = 1
     
     @State private var isShowingEditAlert = false
-    @State private var editingClassID: UUID? = nil
+    @State private var editingClassID: UUID?
     @State private var editingClassName: String = ""
-    @State private var editingClassPeriod: String = "" 
+    @State private var editingClassPeriod: String = ""
     
     let days = ["월", "화", "수", "목", "금"]
+    
+    // 식별을 명확하게 하기 위해 정렬된 리스트를 별도 프로퍼티로 추출합니다.
+    private var sortedClasses: [ClassItem] {
+        manager.timeTable[selectedDay].sorted(by: { $0.period < $1.period })
+    }
     
     var body: some View {
         NavigationView {
             VStack {
-                dayPicker
+                Picker("요일", selection: $selectedDay) {
+                    ForEach(days, id: \.self) { day in
+                        Text(day).tag(day)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding()
                 
-                if !isEditingMode {
-                    editToggleButton
-                } else {
+                if isEditingMode {
                     addClassSection
+                } else {
+                    editToggleButton
                 }
                 
                 classList
             }
             .navigationTitle("시간표")
             .alert("수업 정보 수정", isPresented: $isShowingEditAlert) {
-                editAlertActions
+                TextField("교시 (숫자)", text: $editingClassPeriod).keyboardType(.numberPad)
+                TextField("과목 이름", text: $editingClassName)
+                Button("취소", role: .cancel) { }
+                Button("저장", action: updateClassInfo)
             }
         }
-    }
-    
-    private var dayPicker: some View {
-        Picker("요일", selection: $selectedDay) {
-            ForEach(days, id: \.self) { day in
-                Text(day).tag(day)
-            }
-        }
-        .pickerStyle(SegmentedPickerStyle())
-        .padding()
     }
     
     private var editToggleButton: some View {
-        Button(action: { 
-            withAnimation { 
-                isEditingMode = true 
-                updateNextPeriod() // 수정 모드 진입 시 다음 교시 번호 맞춤
-            } 
-        }) {
-            HStack {
-                Image(systemName: "pencil.circle.fill")
-                Text("시간표 수정하기")
+        Button(action: {
+            withAnimation {
+                isEditingMode = true
+                updateNextPeriod()
             }
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color.orange)
-            .foregroundColor(.white)
-            .cornerRadius(12)
+        }) {
+            Label("시간표 수정하기", systemImage: "pencil.circle.fill")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.orange)
+                .foregroundColor(.white)
+                .cornerRadius(12)
         }
         .padding(.horizontal)
     }
@@ -203,19 +203,13 @@ struct TimeTableView: View {
             HStack {
                 Text("수업 추가").font(.headline)
                 Spacer()
-                Button("완료") {
-                    withAnimation {
-                        isEditingMode = false
-                        newClassName = ""
-                    }
-                }
-                .font(.headline)
-                .foregroundColor(.blue)
+                Button("완료") { withAnimation { isEditingMode = false } }
+                    .font(.headline)
             }
             
             HStack {
                 Stepper("\(newClassPeriod)교시", value: $newClassPeriod, in: 1...10)
-                    .frame(width: 130)
+                    .fixedSize()
                 
                 TextField("수업 이름 입력", text: $newClassName)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -223,7 +217,6 @@ struct TimeTableView: View {
                 Button(action: addClass) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
-                        .foregroundColor(newClassName.isEmpty ? .gray : .green)
                 }
                 .disabled(newClassName.isEmpty)
             }
@@ -236,13 +229,13 @@ struct TimeTableView: View {
     
     private var classList: some View {
         List {
-            ForEach(manager.timeTable[selectedDay].sorted(by: { $0.period < $1.period })) { classItem in
+            ForEach(sortedClasses) { classItem in
                 classRow(for: classItem)
             }
-            // 수정 모드일 때만 삭제 가능
-            .onDelete(perform: isEditingMode ? { offsets in deleteClass(at: offsets) } : nil)
+            // MODIFICATION START
+            .onDelete(perform: deleteClass) // Always provide the deleteClass function
+            // MODIFICATION END
         }
-        // 수정 모드일 때 리스트에 편집 UI(마이너스 버튼) 표시
         .environment(\.editMode, isEditingMode ? .constant(.active) : .constant(.inactive))
     }
     
@@ -274,67 +267,39 @@ struct TimeTableView: View {
         }
     }
     
-    @ViewBuilder
-    private var editAlertActions: some View {
-        TextField("교시 (숫자)", text: $editingClassPeriod)
-            .keyboardType(.numberPad)
-        TextField("과목 이름", text: $editingClassName)
-        Button("취소", role: .cancel) { }
-        Button("저장") { updateClassInfo() }
+    private func updateClassInfo() {
+        guard let id = editingClassID,
+              let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == id }),
+              let newPeriod = Int(editingClassPeriod) else { return }
+        
+        manager.timeTable[selectedDay][index].name = editingClassName
+        manager.timeTable[selectedDay][index].period = newPeriod
     }
     
-    // MARK: - Logic
-    
-    func updateClassInfo() {
-        if let id = editingClassID, 
-           let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == id }),
-           let newPeriod = Int(editingClassPeriod) {
-            manager.timeTable[selectedDay][index].name = editingClassName
-            manager.timeTable[selectedDay][index].period = newPeriod
-            manager.timeTable[selectedDay].sort(by: { $0.period < $1.period })
-            manager.saveData()
-            updateNextPeriod()
-        }
-    }
-    
-    func addClass() {
+    private func addClass() {
         let newItem = ClassItem(name: newClassName, period: newClassPeriod, items: [])
         manager.timeTable[selectedDay].append(newItem)
-        manager.timeTable[selectedDay].sort(by: { $0.period < $1.period })
-        manager.saveData()
-        
         newClassName = ""
         updateNextPeriod()
     }
     
-    func deleteClass(at offsets: IndexSet) {
-        // 현재 요일의 정렬된 리스트 복사본
-        var items = manager.timeTable[selectedDay].sorted(by: { $0.period < $1.period })
-        
-        // 삭제할 아이템들의 ID를 미리 추출 (인덱스 변화에 영향받지 않기 위함)
+    private func deleteClass(at offsets: IndexSet) {
+        var items = sortedClasses
         let idsToDelete = offsets.map { items[$0].id }
         
         for id in idsToDelete {
             if let index = items.firstIndex(where: { $0.id == id }) {
                 let deletedPeriod = items[index].period
                 items.remove(at: index)
-                
-                // 삭제된 교시보다 뒷 순서의 수업들을 한 교시씩 앞으로 당김
-                for i in 0..<items.count {
-                    if items[i].period > deletedPeriod {
-                        items[i].period -= 1
-                    }
+                for i in 0..<items.count where items[i].period > deletedPeriod {
+                    items[i].period -= 1
                 }
             }
         }
-        
-        // 변경 사항을 데이터 매니저에 반영
         manager.timeTable[selectedDay] = items
-        manager.saveData()
         updateNextPeriod()
     }
     
-    // 다음 입력할 교시를 마지막 교시 + 1로 자동 업데이트
     private func updateNextPeriod() {
         let maxPeriod = manager.timeTable[selectedDay].map { $0.period }.max() ?? 0
         newClassPeriod = min(maxPeriod + 1, 10)
@@ -354,7 +319,7 @@ struct ClassDetailView: View {
             HStack {
                 TextField("새 준비물", text: $newItemName)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                Button("추가") { addItem() }
+                Button("추가", action: addItem)
                     .disabled(newItemName.isEmpty)
             }
             .padding()
@@ -374,31 +339,26 @@ struct ClassDetailView: View {
                                 .foregroundColor(item.isCompleted ? .gray : .primary)
                         }
                     }
-                    .onDelete { offsets in deleteItem(at: offsets, classIndex: classIndex) }
+                    .onDelete { offsets in
+                        manager.timeTable[selectedDay][classIndex].items.remove(atOffsets: offsets)
+                    }
                 }
             }
         }
         .navigationTitle("\(classItem.name) 준비물")
     }
     
-    func toggleItem(_ item: TodoItem, in classIndex: Int) {
+    private func toggleItem(_ item: TodoItem, in classIndex: Int) {
         if let itemIndex = manager.timeTable[selectedDay][classIndex].items.firstIndex(where: { $0.id == item.id }) {
             manager.timeTable[selectedDay][classIndex].items[itemIndex].isCompleted.toggle()
-            manager.saveData()
         }
     }
     
-    func addItem() {
+    private func addItem() {
         if let index = manager.timeTable[selectedDay].firstIndex(where: { $0.id == classItem.id }) {
             manager.timeTable[selectedDay][index].items.append(TodoItem(name: newItemName))
-            manager.saveData()
             newItemName = ""
         }
-    }
-    
-    func deleteItem(at offsets: IndexSet, classIndex: Int) {
-        manager.timeTable[selectedDay][classIndex].items.remove(atOffsets: offsets)
-        manager.saveData()
     }
 }
 
@@ -409,18 +369,22 @@ struct DDayView: View {
     @State private var newScheduleName: String = ""
     @State private var newScheduleDate: Date = Date()
     
+    private var sortedSchedules: [ScheduleItem] {
+        manager.schedules.sorted(by: { $0.date < $1.date })
+    }
+    
     var body: some View {
         NavigationView {
             VStack {
-                Text(getTodayString()).font(.headline).padding(.top)
+                Text(Date().formatted(date: .complete, time: .omitted))
+                    .font(.headline).padding(.top)
                 
                 VStack {
                     TextField("일정 이름", text: $newScheduleName).textFieldStyle(RoundedBorderTextFieldStyle())
                     DatePicker("날짜 선택", selection: $newScheduleDate, displayedComponents: .date)
-                        .datePickerStyle(CompactDatePickerStyle())
                         .environment(\.locale, Locale(identifier: "ko_KR"))
                     
-                    Button("일정 추가") { addSchedule() }
+                    Button("일정 추가", action: addSchedule)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(newScheduleName.isEmpty ? Color.gray : Color.blue)
@@ -431,11 +395,12 @@ struct DDayView: View {
                 .padding()
                 
                 List {
-                    ForEach(manager.schedules.sorted(by: { $0.date < $1.date })) { schedule in
+                    ForEach(sortedSchedules) { schedule in
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(schedule.name)
-                                Text(formatDate(schedule.date)).font(.caption).foregroundColor(.gray)
+                                Text(schedule.date.formatted(date: .numeric, time: .omitted))
+                                    .font(.caption).foregroundColor(.gray)
                             }
                             Spacer()
                             Text(calculateDDay(targetDate: schedule.date)).fontWeight(.bold)
@@ -448,51 +413,31 @@ struct DDayView: View {
         }
     }
     
-    func getTodayString() -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "yyyy년 MM월 dd일 EEEE"
-        return formatter.string(from: Date())
-    }
-    
-    func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-    
-    func calculateDDay(targetDate: Date) -> String {
+    private func calculateDDay(targetDate: Date) -> String {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: targetDate))
-        if let day = components.day {
-            if day > 0 { return "D-\(day)" }
-            else if day == 0 { return "D-Day" }
-            else { return "종료" }
-        }
-        return ""
+        guard let day = components.day else { return "" }
+        
+        if day > 0 { return "D-\(day)" }
+        if day == 0 { return "D-Day" }
+        return "종료"
     }
     
-    func addSchedule() {
-        guard !newScheduleName.isEmpty else { return }
-        
+    private func addSchedule() {
         manager.schedules.append(ScheduleItem(name: newScheduleName, date: newScheduleDate))
-        manager.saveData()
         newScheduleName = ""
     }
     
-    func deleteSchedule(at offsets: IndexSet) {
-        let sorted = manager.schedules.sorted(by: { $0.date < $1.date })
-        offsets.forEach { index in
-            let itemToDelete = sorted[index]
-            if let originalIndex = manager.schedules.firstIndex(where: { $0.id == itemToDelete.id }) {
-                manager.schedules.remove(at: originalIndex)
-            }
+    private func deleteSchedule(at offsets: IndexSet) {
+        let schedulesToRemove = offsets.map { sortedSchedules[$0].id }
+        manager.schedules.removeAll { schedule in
+            schedulesToRemove.contains(schedule.id)
         }
-        manager.saveData()
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(SchoolDataManager())
 }
 
