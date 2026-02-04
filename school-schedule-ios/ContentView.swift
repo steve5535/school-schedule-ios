@@ -90,7 +90,6 @@ class SchoolDataManager: ObservableObject {
         }
     }
     
-    // 알림 시간 설정 (기본값: 오전 9시)
     @Published var alertTime: Date {
         didSet {
             UserDefaults.standard.set(alertTime, forKey: "alertTime")
@@ -102,11 +101,9 @@ class SchoolDataManager: ObservableObject {
     private let scheduleFileName = "schedule_dday.json"
     
     init() {
-        // 저장된 알림 시간 불러오기
         if let savedTime = UserDefaults.standard.object(forKey: "alertTime") as? Date {
             self.alertTime = savedTime
         } else {
-            // 기본값 09:00 설정
             self.alertTime = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
         }
         
@@ -157,12 +154,9 @@ class SchoolDataManager: ObservableObject {
     
     private func scheduleDMinusOneNotification(for schedule: ScheduleItem) {
         let calendar = Calendar.current
-        
-        // 사용자가 설정한 시간의 시/분 추출
         let hour = calendar.component(.hour, from: alertTime)
         let minute = calendar.component(.minute, from: alertTime)
         
-        // D-1일 계산 및 사용자 설정 시간 적용
         guard let notifyDate = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: schedule.date)),
               let finalNotifyDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: notifyDate),
               finalNotifyDate > Date() else { return }
@@ -252,6 +246,10 @@ struct TimeTableView: View {
                 TextField("과목 이름", text: $editingClassName)
                 Button("취소", role: .cancel) { }
                 Button("저장", action: updateClassInfo)
+            }
+            // 요일이 변경될 때마다 다음 교시를 업데이트함
+            .onChange(of: selectedDay) {
+                updateNextPeriod()
             }
         }
     }
@@ -483,7 +481,6 @@ struct DDayView: View {
                 Text("현재날짜 : \(formattedCurrentDate)")
                     .font(.headline).padding(.top)
                 
-                // 알림 시간 설정 섹션 추가
                 VStack(alignment: .leading) {
                     HStack {
                         Image(systemName: "bell.badge.fill")
