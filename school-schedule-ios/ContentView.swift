@@ -76,15 +76,24 @@ struct ScheduleItem: Identifiable, Codable {
     var id = UUID()
     var name: String
     var date: Date
+    var isNotificationEnabled: Bool = true
 }
 
 class SchoolDataManager: ObservableObject {
     @Published var timeTable = TimeTableData() {
-        didSet { saveData() }
+        didSet { saveTimeTable() }
     }
     @Published var schedules: [ScheduleItem] = [] {
         didSet { 
-            saveData()
+            saveSchedules()
+            updateAllNotifications()
+        }
+    }
+    
+    // 알림 시간 설정 (기본값: 오전 9시)
+    @Published var alertTime: Date {
+        didSet {
+            UserDefaults.standard.set(alertTime, forKey: "alertTime")
             updateAllNotifications()
         }
     }
@@ -93,6 +102,14 @@ class SchoolDataManager: ObservableObject {
     private let scheduleFileName = "schedule_dday.json"
     
     init() {
+        // 저장된 알림 시간 불러오기
+        if let savedTime = UserDefaults.standard.object(forKey: "alertTime") as? Date {
+            self.alertTime = savedTime
+        } else {
+            // 기본값 09:00 설정
+            self.alertTime = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+        }
+        
         loadData()
     }
     
@@ -104,18 +121,24 @@ class SchoolDataManager: ObservableObject {
         documentsDirectory.appendingPathComponent(fileName)
     }
     
-    private func saveData() {
+    private func saveTimeTable() {
         let encoder = JSONEncoder()
         try? encoder.encode(timeTable).write(to: fileURL(for: timeTableFileName))
+    }
+    
+    private func saveSchedules() {
+        let encoder = JSONEncoder()
         try? encoder.encode(schedules).write(to: fileURL(for: scheduleFileName))
     }
     
     private func loadData() {
         let decoder = JSONDecoder()
+        
         if let data = try? Data(contentsOf: fileURL(for: timeTableFileName)),
            let decoded = try? decoder.decode(TimeTableData.self, from: data) {
             timeTable = decoded
         }
+        
         if let data = try? Data(contentsOf: fileURL(for: scheduleFileName)),
            let decoded = try? decoder.decode([ScheduleItem].self, from: data) {
             schedules = decoded
@@ -126,15 +149,22 @@ class SchoolDataManager: ObservableObject {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         
         for schedule in schedules {
-            scheduleDMinusOneNotification(for: schedule)
+            if schedule.isNotificationEnabled {
+                scheduleDMinusOneNotification(for: schedule)
+            }
         }
     }
     
     private func scheduleDMinusOneNotification(for schedule: ScheduleItem) {
         let calendar = Calendar.current
-        // D-1일 계산 (일정 하루 전 오전 9시 알림)
+        
+        // 사용자가 설정한 시간의 시/분 추출
+        let hour = calendar.component(.hour, from: alertTime)
+        let minute = calendar.component(.minute, from: alertTime)
+        
+        // D-1일 계산 및 사용자 설정 시간 적용
         guard let notifyDate = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: schedule.date)),
-              let finalNotifyDate = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: notifyDate),
+              let finalNotifyDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: notifyDate),
               finalNotifyDate > Date() else { return }
         
         let content = UNMutableNotificationContent()
@@ -147,6 +177,12 @@ class SchoolDataManager: ObservableObject {
         
         let request = UNNotificationRequest(identifier: schedule.id.uuidString, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)
+    }
+    
+    func toggleNotification(for id: UUID) {
+        if let index = schedules.firstIndex(where: { $0.id == id }) {
+            schedules[index].isNotificationEnabled.toggle()
+        }
     }
 }
 
@@ -447,6 +483,23 @@ struct DDayView: View {
                 Text("현재날짜 : \(formattedCurrentDate)")
                     .font(.headline).padding(.top)
                 
+                // 알림 시간 설정 섹션 추가
+                VStack(alignment: .leading) {
+                    HStack {
+                        Image(systemName: "bell.badge.fill")
+                            .foregroundColor(.orange)
+                        DatePicker("D-1 알림 시간", selection: $manager.alertTime, displayedComponents: .hourAndMinute)
+                            .font(.subheadline)
+                    }
+                    Text("* 일정이 있는 하루 전 날 위 시간에 알림이 울립니다.")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(10)
+                .padding(.horizontal)
+                
                 VStack {
                     TextField("일정 이름", text: $newScheduleName).textFieldStyle(RoundedBorderTextFieldStyle())
                     DatePicker("날짜 선택", selection: $newScheduleDate, displayedComponents: .date)
@@ -471,9 +524,18 @@ struct DDayView: View {
                                     .font(.caption).foregroundColor(.gray)
                             }
                             Spacer()
-                            Text(calculateDDay(targetDate: schedule.date))
-                                .fontWeight(.bold)
-                                .foregroundColor(isPast(schedule.date) ? .gray : .primary)
+                            
+                            HStack(spacing: 15) {
+                                Button(action: { manager.toggleNotification(for: schedule.id) }) {
+                                    Image(systemName: schedule.isNotificationEnabled ? "bell.fill" : "bell.slash")
+                                        .foregroundColor(schedule.isNotificationEnabled ? .orange : .gray)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Text(calculateDDay(targetDate: schedule.date))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(isPast(schedule.date) ? .gray : .primary)
+                            }
                         }
                     }
                     .onDelete(perform: deleteSchedule)
